@@ -1,4 +1,5 @@
 from entity import *
+#todo: do not raise exception when object with number created
 
 class Section(Entity):
     _columns  = ['title']
@@ -38,9 +39,24 @@ class User(Entity):
 
 
 if __name__ == "__main__":
-    section = Section()
-    section.title = "zalupa"
+    from psycopg2 import connect
+    Entity.db = connect(host='localhost', dbname='news2', user='dbuser', password='dbuser', port='5432')
+    section = Section(1)
+    print(section.title)
+    section.title = "title"
     section.save()
+    print(section.title)
+    section3 = Section(3)
+    section3.title = 'new title for section3'
+    section3.save()
+    print(section3.title)
+    section4 = Section()
+    section4.title = "sdfvsdfvsdfvsdf"
+    section4.save()
+    section4.delete()
+    # section.title = "zalupa"
+    # section.save()
+    #
+    # for section in Section.all():
+    #     print(section.title)
 
-    for section in Section.all():
-        print(section.title)
