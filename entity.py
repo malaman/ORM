@@ -36,8 +36,6 @@ class Entity(object):
         self.__id       = id
         self.__loaded   = False
         self.__modified = False
-        self.__saved = False
-        self.__created = False
         self.__table    = self.__class__.__name__.lower()
 
     def __getattr__(self, name):
@@ -47,9 +45,6 @@ class Entity(object):
         #    columns, parents, children or siblings and call corresponding
         #    getter with name as an argument
         # throw an exception, if attribute is unrecognized
-        # if self.__modified:
-        #     raise ModifiedButNotSaved
-        # else:
         if name in self._columns:
             if not self.__loaded:
                 self.__load()
@@ -62,21 +57,15 @@ class Entity(object):
         #    columns, parents, children or siblings and call corresponding
         #    setter with name and value as arguments or use default implementation
         if name in self._columns:
-            exist_value = None
-            try:
-                exist_value=self.__getattr__(name)
-            except KeyError:
-                pass
-            if exist_value != value:
-                self._set_column(name, value)
-                self.__modified = True
-                return
+            self._set_column(name, value)
+            self.__modified = True
+            return
         else:
-            try:
-                self.__getattr__(name)
-            except AttributeError:
-                super(Entity, self).__setattr__(name, value)
+            super(Entity, self).__setattr__(name, value)
 
+
+    def __del__(self):
+        self.__cursor.close()
 
     def __execute_query(self, query, args=None):
         # execute an sql statement and handle exceptions together with transactions
@@ -84,7 +73,7 @@ class Entity(object):
             if args is None:
                 self.__cursor.execute(query)
             else:
-                self.__cursor.execute(query % args)
+                self.__cursor.execute(query, args)
             self.__class__.db.commit()
         except:
             self.__class__.db.rollback()
@@ -94,35 +83,45 @@ class Entity(object):
         # generate an insert query string from fields keys and values and execute it
         # use prepared statements
         # save an insert id
-        if self.__id:
-            self.__fields['{}_id'.format(self.__table)] = self.__id
-        columns = ", ".join('{}'.format(key) for key in self.__fields.keys())
-        placeholders = ", ".join("'{}'".format(value) for value in self.__fields.values())
-        if not columns  or not placeholders:
+        columns = ''
+        placeholders = ''
+        values = []
+        for item in self._columns:
+            key = '{}_{}'.format(self.__table, item)
+            columns = ", ".join([columns, key])
+            placeholders = ", ".join([placeholders, '%s'])
+            values.append(self.__fields[key])
+        if not columns or not placeholders:
             raise AttributeError
-        self.__execute_query(self.__insert_query.format(table=self.__table, columns=columns,
-                                                        placeholders=placeholders))
+        self.__execute_query(self.__insert_query.format(table=self.__table, columns=columns[2:],
+                                                        placeholders=placeholders[2:]), tuple(values))
         self.__id = self.__cursor.fetchone()[0]
-        self.__created = True
 
     def __load(self):
         # if current instance is not loaded yet — execute select statement and store it's result as an associative array (fields), where column names used as keys
         if self.__id:
-            self.__execute_query(self.__select_query.format(table=self.__table), self.__id)
-            result = self.__cursor.fetchone()
-            if result:
-                keys = ['{}_{}'.format(self.__table, elem) for elem in self._columns]
-                values = []
-                for key in keys:
-                    values.append(result[key])
-                self.__fields = dict(zip(keys, values))
-                self.__loaded = True
+            self.__execute_query(self.__select_query.format(table=self.__table), (self.__id,))
+            self._load_fields(dict(self.__cursor.fetchone()))
+
+    def _load_fields(self, dictionary):
+        """
+        load data from dictionary to instance __fields dictionary
+        """
+        self.__fields = dict(dictionary)
+        self.__loaded = True
 
     def __update(self):
         # generate an update query string from fields keys and values and execute it
         # use prepared statements
-        columns = ", ".join(["{}='{}'".format(k, v) for (k, v) in self.__fields.items()])
-        self.__execute_query(self.__update_query.format(table=self.__table, columns=columns), self.__id)
+        columns = ''
+        values = []
+        for item in self._columns:
+            key = '{}_{}'.format(self.__table, item)
+            columns = ", ".join([columns, '{}=%s'.format(key)])
+            values.append(self.__fields[key])
+        values.append(self.__id)
+        self.__execute_query(self.__update_query.format(table=self.__table,
+                                                        columns=columns[2:]), tuple(values))
 
     def _get_children(self, name):
         # return an array of child entity instances
@@ -165,30 +164,21 @@ class Entity(object):
             cursor.execute(cls.__select_all_query.format(table=table_name))
             cls.db.commit()
             result = cursor.fetchall()
-            obj_list=[]
-            for object in result:
-                obj = cls()
-                keys = ['{}_{}'.format(table_name, elem) for elem in cls._columns]
-                keys.append('{}_id'.format(table_name))
-                values = []
-                for key in keys:
-                    values.append(object[key])
-                obj.__fields = dict(zip(keys, values))
-                obj.__id = obj.__fields['{}_id'.format(table_name)]
-                obj.__loaded = True
-                obj.__saved = True
-                obj_list.append(obj)
-            return obj_list
+            instance_list=[]
+            for item in result:
+                instance = cls()
+                instance._load_fields(item)
+                instance.__id = instance.__fields['{}_id'.format(table_name)]
+                instance_list.append(instance)
+            return instance_list
         except:
             cls.db.rollback()
             raise DatabaseError
 
-
-
     def delete(self):
         # execute delete query with appropriate id
-        if self.__id and self.__saved:
-            self.__execute_query(self.__delete_query.format(table=self.__table), self.__id)
+        if self.__id:
+            self.__execute_query(self.__delete_query.format(table=self.__table), (self.__id,))
         else:
             raise RuntimeException
 
@@ -200,20 +190,17 @@ class Entity(object):
     @property
     def created(self):
         # try to guess yourself
-        return self.__created
+        return self.__fields['{}_created'.format(self.__table)]
 
     @property
     def updated(self):
         # try to guess yourself
-        return self.__modified
+        return self.__fields['{}_created'.format(self.__table)]
 
     def save(self):
         # execute either insert or update query, depending on instance id
-        if self.__loaded:
+        if self.__id:
             self.__update()
         else:
             self.__insert()
-        self.__saved = True
         self.__modified = False
-
-
