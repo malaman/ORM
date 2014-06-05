@@ -51,9 +51,17 @@ if __name__ == "__main__":
     section3.save()
     print(section3.title)
     section4 = Section()
-    section4.title = "sdfvsdfvsdfvsdf"
+    section4.title = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     section4.save()
     section4.delete()
+    section5 = Section()
+    section5.title = 'test title for section5'
+    section5.save()
+    section5.delete()
+    lst = Section.all()
+    for obj in lst:
+        obj.delete()
+
     # section.title = "zalupa"
     # section.save()
     #

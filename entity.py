@@ -10,18 +10,22 @@ class AttributeError(Exception):
     pass
 class ModifiedButNotSaved(Exception):
     pass
+class RuntimeException(Exception):
+    pass
 
 class Entity(object):
     db = None
 
     __delete_query    = 'DELETE FROM "{table}" WHERE {table}_id=%s'
-    __insert_query    = 'INSERT INTO "{table}" ({columns}) VALUES ({placeholders})'
+    __insert_query    = 'INSERT INTO "{table}" ({columns}) VALUES ({placeholders}) RETURNING {table}_id'
     __list_query      = 'SELECT * FROM "{table}"'
     __parent_query    = 'SELECT * FROM "{table}" WHERE {parent}_id=%s'
     __select_query    = 'SELECT * FROM "{table}" WHERE {table}_id=%s'
+    __select_all_query = 'SELECT * FROM "{table}"'
     __sibling_query   = 'SELECT * FROM "{sibling}" NATURAL JOIN "{join_table}" WHERE {table}_id=%s'
     __update_children = 'UPDATE "{table}" SET {parent}_id=%s WHERE {table}_id IN ({children})'
     __update_query    = 'UPDATE "{table}" SET {columns} WHERE {table}_id=%s'
+
 
     def __init__(self, id=None):
         if self.__class__.db is None:
@@ -32,6 +36,8 @@ class Entity(object):
         self.__id       = id
         self.__loaded   = False
         self.__modified = False
+        self.__saved = False
+        self.__created = False
         self.__table    = self.__class__.__name__.lower()
 
     def __getattr__(self, name):
@@ -41,17 +47,15 @@ class Entity(object):
         #    columns, parents, children or siblings and call corresponding
         #    getter with name as an argument
         # throw an exception, if attribute is unrecognized
-        if self.__modified:
-            raise ModifiedButNotSaved
+        # if self.__modified:
+        #     raise ModifiedButNotSaved
+        # else:
+        if name in self._columns:
+            if not self.__loaded:
+                self.__load()
+            return self._get_column(name)
         else:
-            if name in self._columns:
-                if not self.__loaded:
-                    self.__load()
-                return self._get_column(name)
-            else:
-                raise AttributeError
-        return super(Entity, self).__getattr__(name)
-
+            raise AttributeError
 
     def __setattr__(self, name, value):
         # check, if requested property name is in current class
@@ -68,7 +72,10 @@ class Entity(object):
                 self.__modified = True
                 return
         else:
-            super(Entity, self).__setattr__(name, value)
+            try:
+                self.__getattr__(name)
+            except AttributeError:
+                super(Entity, self).__setattr__(name, value)
 
 
     def __execute_query(self, query, args=None):
@@ -95,7 +102,8 @@ class Entity(object):
             raise AttributeError
         self.__execute_query(self.__insert_query.format(table=self.__table, columns=columns,
                                                         placeholders=placeholders))
-        self.__modified = False
+        self.__id = self.__cursor.fetchone()[0]
+        self.__created = True
 
     def __load(self):
         # if current instance is not loaded yet — execute select statement and store it's result as an associative array (fields), where column names used as keys
@@ -115,7 +123,6 @@ class Entity(object):
         # use prepared statements
         columns = ", ".join(["{}='{}'".format(k, v) for (k, v) in self.__fields.items()])
         self.__execute_query(self.__update_query.format(table=self.__table, columns=columns), self.__id)
-        self.__modified = False
 
     def _get_children(self, name):
         # return an array of child entity instances
@@ -152,12 +159,38 @@ class Entity(object):
         # for each row create an instance of appropriate class
         # each instance must be filled with column data, a correct id and MUST NOT query a database for own fields any more
         # return an array of istances
-        pass
+        try:
+            cursor = cls.db.cursor(cursor_factory=DictCursor)
+            table_name = str(cls.__name__.lower())
+            cursor.execute(cls.__select_all_query.format(table=table_name))
+            cls.db.commit()
+            result = cursor.fetchall()
+            obj_list=[]
+            for object in result:
+                obj = cls()
+                keys = ['{}_{}'.format(table_name, elem) for elem in cls._columns]
+                keys.append('{}_id'.format(table_name))
+                values = []
+                for key in keys:
+                    values.append(object[key])
+                obj.__fields = dict(zip(keys, values))
+                obj.__id = obj.__fields['{}_id'.format(table_name)]
+                obj.__loaded = True
+                obj.__saved = True
+                obj_list.append(obj)
+            return obj_list
+        except:
+            cls.db.rollback()
+            raise DatabaseError
+
+
 
     def delete(self):
         # execute delete query with appropriate id
-        if self.__id:
-            self.__execute_query(self.__delete_query.format(self.__table), self.__id)
+        if self.__id and self.__saved:
+            self.__execute_query(self.__delete_query.format(table=self.__table), self.__id)
+        else:
+            raise RuntimeException
 
     @property
     def id(self):
@@ -167,7 +200,7 @@ class Entity(object):
     @property
     def created(self):
         # try to guess yourself
-        pass
+        return self.__created
 
     @property
     def updated(self):
@@ -180,5 +213,7 @@ class Entity(object):
             self.__update()
         else:
             self.__insert()
+        self.__saved = True
+        self.__modified = False
 
 
