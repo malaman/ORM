@@ -45,6 +45,7 @@ if __name__ == "__main__":
     Entity.db = connect(host='localhost', dbname='news2', user='dbuser', password='dbuser', port='5432')
     section = Section()
     section.title = 'something'
+    print(section.title)
     section.save()
     section2 = Section(436)
     print(section2.title)
@@ -53,39 +54,32 @@ if __name__ == "__main__":
     section3 = Section(437)
     section3.title = 'sdfvsdfv'
     section3.save()
-    # section.title = 'new test title'
-    # section.delete()
-    # section.title = "title"
-    # print(section.title)
-    # section.save()
-    # section.title = "title1234"
-    # print(section.title)
-    # section3 = Section(3)
-    # section3.title = 'new title for section3'
-    # section3.save()
-    # print(section3.title)
-    # section4 = Section()
-    # section4.title = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-    # section4.save()
-    # section5 = Section()
-    # section5.title = 'test title for section5'
-    # section5.save()
-    # section6 = Section()
-    # section6.title = "this is really important title"
-    # section6.save()
-    # section = Section()
-    # section.title = 'sdfvsdfv'
-    # section.title = 'sdfvsdfvdsfvdsfv'
-    # section.save()
-    # print(section6.id)
-    # lst = Section.all()
-    # for obj in lst:
-    #     obj.title = 'same title for all objects'
-    #     obj.save()
-    #
-    # section = Section()
-    # section.title = "zalupa"
-    # section.save()
+    section.title = 'new test title'
+    section.delete()
+    section3 = Section(438)
+    section3.title = 'new title for section3'
+    section3.save()
+    print(section3.title)
+    section4 = Section()
+    section4.title = "!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+    section4.save()
+    section5 = Section()
+    section5.title = 'test title for section5'
+    section5.save()
+    section6 = Section()
+    section6.title = "this is really important title"
+    section6.save()
+    section = Section()
+    section.title = 'sdfvsdfv'
+    section.title = 'sdfvsdfvdsfvdsfv'
+    section.save()
+    print(section6.id)
+    lst = Section.all()
+    for instance in lst:
+        print(instance.id, instance.title)
+    section = Section()
+    section.title = "zalupa"
+    section.save()
 
     # for section in Section.all():
     #      section.delete()

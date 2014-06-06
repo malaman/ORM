@@ -45,6 +45,8 @@ class Entity(object):
         #    columns, parents, children or siblings and call corresponding
         #    getter with name as an argument
         # throw an exception, if attribute is unrecognized
+        if self.__modified:
+            raise AttributeError
         if name in self._columns:
             if not self.__loaded:
                 self.__load()
@@ -107,7 +109,7 @@ class Entity(object):
         """
         load data from dictionary to instance __fields dictionary
         """
-        self.__fields = dict(dictionary)
+        self.__fields = dictionary
         self.__loaded = True
 
     def __update(self):
@@ -167,7 +169,7 @@ class Entity(object):
             instance_list=[]
             for item in result:
                 instance = cls()
-                instance._load_fields(item)
+                instance._load_fields(dict(item))
                 instance.__id = instance.__fields['{}_id'.format(table_name)]
                 instance_list.append(instance)
             return instance_list
