@@ -151,13 +151,7 @@ class Entity(object):
         rows = self.__execute_query(self.__select_child_query.format(child_table=children_class.lower(),
                                                                      parent_table=self.__table), (self.__id,))
         return self._rows_to_instances(rows, 'models', children_class)
-        # instance_list = []
-        # for row in rows:
-        #     module = __import__('models')
-        #     instance = getattr(module, children_class)()
-        #     instance._load_fields(dict(row))
-        #     instance_list.append(instance)
-        # return instance_list
+
 
     def _get_column(self, name):
         # return value from fields array by <table>_<name> as a key
@@ -227,6 +221,7 @@ class Entity(object):
         # execute delete query with appropriate id
         if self.__id:
             self.__execute_query(self.__delete_query.format(table=self.__table), (self.__id,))
+            self.db.commit()
         else:
             raise RuntimeException
 

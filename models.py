@@ -64,6 +64,7 @@ if __name__ == "__main__":
     item = Item(1)
     print(item.name)
     print(item.category.title)
+
     category = Category(2)
 
     category = Category()
