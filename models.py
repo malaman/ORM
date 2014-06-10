@@ -48,6 +48,13 @@ class Item(Entity):
     _columns = ['name', 'description', 'price', 'popular']
     _parents = ['category']
     _children = {}
+    _siblings = {'orders':'Order'}
+
+class Order(Entity):
+    _columns = ['address', 'description']
+    _parents = ['customer']
+    _siblings = {'items':'Item'}
+    _children = {}
 
 if __name__ == "__main__":
     from psycopg2 import connect
@@ -68,6 +75,9 @@ if __name__ == "__main__":
     for item in category.items:
         print(item.name)
 
+    order = Order(6)
+    for item in order.items:
+        print(item.name)
 
     # for category in Category.all():
     #     print(category.title)

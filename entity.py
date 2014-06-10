@@ -56,6 +56,8 @@ class Entity(object):
             return self._get_parent(name)
         if name in self._children:
             return self._get_children(name)
+        if name in self._siblings:
+            return self._get_siblings(name)
         raise AttributeError
 
     def __setattr__(self, name, value):
@@ -133,18 +135,29 @@ class Entity(object):
                                                         columns=columns), tuple(values))
         self.db.commit()
 
-    def _get_children(self, name):
-        # return an array of child entity instances
-        # each child instance must have an id and be filled with data
-        children_class_name = self._children[name]
-        module = __import__('models')
-        rows = self.__execute_query(self.__select_child_query.format(child_table=children_class_name.lower(), parent_table=self.__table), (self.__id,))
+    def _rows_to_instances(self, rows, module_name, class_name):
         instance_list = []
         for row in rows:
-            instance = getattr(module, children_class_name)()
+            module = __import__(module_name)
+            instance = getattr(module, class_name)()
             instance._load_fields(dict(row))
             instance_list.append(instance)
         return instance_list
+
+    def _get_children(self, name):
+        # return an array of child entity instances
+        # each child instance must have an id and be filled with data
+        children_class = self._children[name]
+        rows = self.__execute_query(self.__select_child_query.format(child_table=children_class.lower(),
+                                                                     parent_table=self.__table), (self.__id,))
+        return self._rows_to_instances(rows, 'models', children_class)
+        # instance_list = []
+        # for row in rows:
+        #     module = __import__('models')
+        #     instance = getattr(module, children_class)()
+        #     instance._load_fields(dict(row))
+        #     instance_list.append(instance)
+        # return instance_list
 
     def _get_column(self, name):
         # return value from fields array by <table>_<name> as a key
@@ -168,7 +181,19 @@ class Entity(object):
         # get parent id from fields with <name>_id as a key
         # return an array of sibling entity instances
         # each sibling instance must have an id and be filled with data
-        pass
+        def _get_join_table(table1, table2):
+            string1 = table1.lower()
+            string2 = table2.lower()
+            if string1[0] < string2[0]:
+                return '{}__{}'.format(string1, string2)
+            return '{}__{}'.format(string2, string1)
+
+        sibling_class = self._siblings[name]
+        join_table = _get_join_table(sibling_class, self.__table)
+        rows = self.__execute_query(self.__sibling_query.format(sibling=sibling_class.lower(),
+                                                            join_table=join_table, table = self.__table), (self.__id,))
+
+        return self._rows_to_instances(rows, 'models', sibling_class)
 
 
     def _set_column(self, name, value):
