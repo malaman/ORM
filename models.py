@@ -1,7 +1,4 @@
 from entity import *
-#todo when made update it is nessesry to build update statement with .__fields disctionary
-#todo __getattr_ отрабатывает только тогда, когда в __dict__ нету правильного аттрибута.
-#todo getattribut отрабатывает всегда
 
 class Section(Entity):
     _columns  = ['title']
@@ -9,11 +6,6 @@ class Section(Entity):
     _children = {'categories': 'Category'}
     _siblings = {}
 
-# class Category(Entity):
-#     _columns  = ['title']
-#     _parents  = ['section']
-#     _children = {'posts': 'Post'}
-#     _siblings = {}
 
 class Post(Entity):
     _columns  = ['content', 'title']
@@ -58,7 +50,7 @@ class Order(Entity):
 
 if __name__ == "__main__":
     from psycopg2 import connect
-    Entity.db = connect(host='localhost', dbname='news3', user='dbuser', password='dbuser', port='5432')
+    Entity.db = connect(host='localhost', dbname='db2', user='dbuser', password='dbuser', port='5432')
     category = Category(1)
     print(category.title)
     item = Item(1)
@@ -80,13 +72,7 @@ if __name__ == "__main__":
     for item in order.items:
         print(item.name)
 
-    # for category in Category.all():
-    #     print(category.title)
-    #
-    # instance = item._get_parent('category')
-    # print(instance.title)
-
-
+    for order in item.orders:
+        print(order.address)
 
     Entity.db.close()
-

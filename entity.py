@@ -27,7 +27,6 @@ class Entity(object):
     __update_children       = 'UPDATE "{table}" SET {parent}_id=%s WHERE {table}_id IN ({children})'
     __update_query          = 'UPDATE "{table}" SET {columns} WHERE {table}_id=%s'
 
-
     def __init__(self, id=None):
         if self.__class__.db is None:
             raise DatabaseError()
@@ -38,7 +37,6 @@ class Entity(object):
         self.__loaded   = False
         self.__modified = False
         self.__table    = self.__class__.__name__.lower()
-
 
     def __getattr__(self, name):
         # check, if instance is modified and throw an exception
@@ -74,18 +72,15 @@ class Entity(object):
             return
         super(Entity, self).__setattr__(name, value)
 
-
     def __del__(self):
         self.__cursor.close()
 
-    def __execute_query(self, query, args=None):
+    def __execute_query(self, query, args):
         # execute an sql statement and handle exceptions together with transactions
         #to do it is possible to return one row for __execute_query
         try:
-            if args is None:
-                self.__cursor.execute(query)
-            else:
-                self.__cursor.execute(query, args)
+            self.__cursor.execute(query, args)
+            self.db.commit()
             try:
                 return self.__cursor.fetchall()
             except ProgrammingError:
@@ -102,16 +97,15 @@ class Entity(object):
         columns = ", ".join('{}'.format(key) for key in self.__fields.keys())
         values = list(self.__fields.values())
         placeholders = ', '.join('%s' for x in values)
-        row = self.__execute_query(self.__insert_query.format(table=self.__table, columns=columns,
-                                                        placeholders=placeholders), tuple(values))
-        self.__id = row[0][0]
-        self.db.commit()
+        format_params = {'table': self.__table, 'columns': columns, 'placeholders': placeholders}
+        rows = self.__execute_query(self.__insert_query.format(**format_params), tuple(values))
+        self.__id = rows[0][0]
 
     def __load(self):
         # if current instance is not loaded yet — execute select statement and store it's result as an associative array (fields), where column names used as keys
         if not self.__loaded:
-            row = self.__execute_query(self.__select_query.format(table=self.__table), (self.__id,))
-            self._load_fields(dict(row[0]))
+            rows = self.__execute_query(self.__select_query.format(table=self.__table), (self.__id,))
+            self._load_fields(dict(rows[0]))
 
     def _load_fields(self, dictionary):
         """
@@ -119,9 +113,6 @@ class Entity(object):
         """
         if not self.__id:
             self.__id = dictionary['{}_id'.format(self.__table)]
-        del dictionary['{}_id'.format(self.__table)]
-        del dictionary['{}_updated'.format(self.__table)]
-        del dictionary['{}_created'.format(self.__table)]
         self.__fields = dictionary
         self.__loaded = True
 
@@ -131,15 +122,14 @@ class Entity(object):
         columns = ", ".join('{}=%s'.format(key) for key in self.__fields.keys())
         values = list(self.__fields.values())
         values.append(self.__id)
-        self.__execute_query(self.__update_query.format(table=self.__table,
-                                                        columns=columns), tuple(values))
-        self.db.commit()
+        format_params = {'table': self.__table, 'columns': columns}
+        self.__execute_query(self.__update_query.format(**format_params), tuple(values))
 
-    def _rows_to_instances(self, rows, module_name, class_name):
+    def _rows_to_instances(self, rows, class_name):
         instance_list = []
+        import models
         for row in rows:
-            module = __import__(module_name)
-            instance = getattr(module, class_name)()
+            instance = getattr(models, class_name)()
             instance._load_fields(dict(row))
             instance_list.append(instance)
         return instance_list
@@ -148,47 +138,35 @@ class Entity(object):
         # return an array of child entity instances
         # each child instance must have an id and be filled with data
         children_class = self._children[name]
-        rows = self.__execute_query(self.__select_child_query.format(child_table=children_class.lower(),
-                                                                     parent_table=self.__table), (self.__id,))
-        return self._rows_to_instances(rows, 'models', children_class)
-
+        format_params = {'child_table': children_class.lower(), 'parent_table': self.__table }
+        rows = self.__execute_query(self.__select_child_query.format(**format_params), (self.__id,))
+        return self._rows_to_instances(rows, children_class)
 
     def _get_column(self, name):
         # return value from fields array by <table>_<name> as a key
         return self.__fields['{}_{}'.format(self.__table, name)]
 
-
-
     def _get_parent(self, name):
         # get parent id from fields with <name>_id as a key
         # return an instance of parent entity class with an appropriate id
         parent_id = self.__fields['{}_id'.format(name)]
-        row = self.__execute_query(self.__select_query.format(table=name), (parent_id,))
+        rows = self.__execute_query(self.__select_query.format(table=name), (parent_id,))
         module = __import__('models')
         instance = getattr(module, name.capitalize())()
         instance.__id = parent_id
-        instance._load_fields(dict(row[0]))
+        instance._load_fields(dict(rows[0]))
         return instance
-
 
     def _get_siblings(self, name):
         # get parent id from fields with <name>_id as a key
         # return an array of sibling entity instances
         # each sibling instance must have an id and be filled with data
-        def _get_join_table(table1, table2):
-            string1 = table1.lower()
-            string2 = table2.lower()
-            if string1[0] < string2[0]:
-                return '{}__{}'.format(string1, string2)
-            return '{}__{}'.format(string2, string1)
-
         sibling_class = self._siblings[name]
-        join_table = _get_join_table(sibling_class, self.__table)
-        rows = self.__execute_query(self.__sibling_query.format(sibling=sibling_class.lower(),
-                                                            join_table=join_table, table = self.__table), (self.__id,))
+        join_table = '__'.join(sorted([sibling_class.lower(), self.__table.lower()]))
+        format_params = {'sibling': sibling_class.lower(), 'join_table': join_table, 'table': self.__table}
+        rows = self.__execute_query(self.__sibling_query.format(**format_params), (self.__id,))
 
-        return self._rows_to_instances(rows, 'models', sibling_class)
-
+        return self._rows_to_instances(rows, sibling_class)
 
     def _set_column(self, name, value):
         # put new value into fields array with <table>_<name> as a key
@@ -209,7 +187,7 @@ class Entity(object):
         # each instance must be filled with column data, a correct id and MUST NOT query a database for own fields any more
         # return an array of istances
         cls_instance = cls()
-        rows = cls_instance.__execute_query(cls_instance.__select_all_query.format(table=cls.__name__.lower()))
+        rows = cls_instance.__execute_query(cls_instance.__select_all_query.format(table=cls.__name__.lower()), None)
         instance_list = []
         for row in rows:
             instance = cls()
@@ -221,7 +199,6 @@ class Entity(object):
         # execute delete query with appropriate id
         if self.__id:
             self.__execute_query(self.__delete_query.format(table=self.__table), (self.__id,))
-            self.db.commit()
         else:
             raise RuntimeException
 
